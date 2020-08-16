@@ -1,0 +1,136 @@
+%current development of base software for fire spread prediction written by
+%Selina Hu
+
+file1 = 'Weather_data.json';
+Weather = jsondecode(fileread(file1));
+
+file2 = 'Fuel_data.json';
+fuel = jsondecode(fileread(file2));
+
+file3 = 'Other_data.json';
+others = jsondecode(fileread(file3));
+
+prediction_grid = zeros(1000,1000);
+
+%grasslands
+if type==1
+    if MC<12        
+        G_Moisture = exp(-0.108*MC);
+    else
+        if sqrt(Weather.W_10_x^2+Weather.W_10_y^2) < 10
+            G_Moisture = 0.684 - 0.0342*MC;
+        else
+            G_Moisture = 0.547 - 0.0228*MC;
+        end
+    end
+    G_Curing = 1.12/(1+59.2*exp(-0.124*(CC-50)));
+    if Weather.W_10<=5       
+        Rate_x = (0.054+0.269*Weather.W_10_x)*G_Moisture*G_Curing
+        Rate_y = (0.054+0.269*Weather.W_10_y)*G_Moisture*G_Curing
+        Rate_other=(0.054)*G_Moisture*G_Curing
+    else
+        Rate_x = (1.4 + 0.838*(Weather.W_10_x-5)^0.844)*G_Moisture*G_Curing;
+        Rate_y = (1.4 + 0.838*(Weather.W_10_y-5)^0.844)*G_Moisture*G_Curing;
+        Rate_other = (1.4 + 0.838*(-5)^0.844)*G_Moisture*G_Curing;
+    end
+    
+ elseif type==2
+    SG_SI=0.57*Weather.W_2+0.96*fuel_load-0.42*MC-7.42;
+    Rate = 1581 + 154.9*Weather.W_2 + 140.6 - 228.0*MC;
+    Rate_other = 1581 + 140.6 - 228.0*MC;
+%%%%%%%%%%%%%%%%%%%%%%%
+
+elseif type==3
+%shrubland models
+    Shrub_MC = 4.37 + 0.161 * Weather.RH - 0.1*(Weather.Temp-25)-0.027*Weather.RH*sunnyday_bool;
+    WF=0.35;
+    if Weather.W_10<5
+        Rate_init = 5.67*(WF*5)^0.91*Shrub_Height^0.22*exp(-0.076*MC);
+        Rate = (Rate_init + 0.2*(5.67*(5*WF)^0.91-Rate_init)*Weather.W_10)*Shrub_Height^0.22 *exp(-0.076*MC);
+        Rate_other = (Rate_init + 0.2*(5.67*(5*WF)^0.91-Rate_init)*0)*Shrub_Height^0.22 *exp(-0.076*MC);
+    else 
+        %rate of spread at a windspeed of 5 km/h
+        Rate_init = 5.67*(WF*5)^0.91*Shrub_Height^0.22*exp(-0.076*MC);
+        Rate = 5.67*(WF*Weather.W_10)^0.91*Shrub_Height^0.22*exp(-0.076*MC);
+        Rate_other = (Rate_init + 0.2*(5.67*(5*WF)^0.91-Rate_init)*0)*Shrub_Height^0.22 *exp(-0.076*MC);
+    end
+elseif type==4
+%forest models
+    switch F_Per
+        case 1
+            MC = 2.76+0.124*Weather.RH - 0.0187*Weather.Temp;
+        case 2
+            MC = 3.60 + 0.169*Weather.RH - 0.0450*Weather.Temp;
+        case 3
+            MC = 3.08 + 0.198*Weather.RH - 0.0483*Weather.Temp;
+    end 
+    M_fun = 18.35*MC^-1.495
+    if Weather.W_10 >5
+        Rate = (30+1.531*(Weather.W_10-5)^0.858 *FHS_S^0.093*(FHS_NS*Height_NS)^0.637 )*M_Fun;
+    else
+        Rate = 30*M_fun;
+    end
+end 
+
+   starting_i=400;
+    starting_j=500;
+    
+for i_count=1:1000
+        for j_count=1:1000
+            if i_count>starting_i && j_count>starting_j
+                distance_diff=sqrt((i_count-starting_i)^2+(starting_j-j_count)^2);
+                %if 
+                distance_diff_x=i_count-starting_i;
+                distance_diff_y=j_count-starting_j;
+                prediction_grid(i_count,j_count)=sqrt((distance_diff_x*Rate_x)^2+(distance_diff_y*Rate_y)^2);
+                
+            elseif i_count>starting_i&&j_count<starting_j
+                distance_diff_x=i_count-starting_i;
+                distance_diff_y=starting_j-j_count;
+                prediction_grid(i_count,j_count)=sqrt((distance_diff_x*Rate_x)^2+(distance_diff_y*Rate_other)^2);
+                
+            elseif i_count<starting_i && j_count >starting_j
+                distance_diff_x=starting_i-i_count;
+                distance_diff_y=j_count-starting_j;
+                prediction_grid(i_count,j_count)=sqrt((distance_diff_x*Rate_other)^2+(distance_diff_y*Rate_y)^2);
+                
+            elseif i_count<starting_i&&j_count<starting_j
+                distance_diff_x=starting_i-i_count;
+                distance_diff_y=starting_j-j_count;
+                prediction_grid(i_count,j_count)=sqrt((distance_diff_x*Rate_other)^2+(distance_diff_y*Rate_other)^2);
+            end
+        end
+end
+
+
+for fill_count = 1:time_calc 
+    %floodfill prediction grid with time values of when each area of the
+    %grid would theorhetically ignite
+    distance_step = 1;
+    time_diff = distance_step/Rate;
+    distance = Rate * time_step;
+    
+
+    
+end
+%visual modelling
+%prediction_grid(200,400)=2;
+%prediction_grid(300,400)=2;
+map_mungo = imread('mungobushlands.png');
+map_image = imread('shrublandsmap.png');
+%image('CData',map_image,'XData',[0 1000],'YData',[0 1000])
+image('CData',map_mungo,'XData',[0 1000],'YData',[0 1000])
+
+axis([500 1000 500 1000])
+[row_A,col_A]=find(prediction_grid>0&prediction_grid<0.2);
+[row_B,col_B]=find(prediction_grid>=0.2&prediction_grid<0.4);
+[row_C,col_C]=find(prediction_grid>=0.4&prediction_grid<0.6);
+[row_D,col_D]=find(prediction_grid>=0.6&prediction_grid<0.8);
+[row_E,col_E]=find(prediction_grid>=0.8&prediction_grid<0.9);
+
+hold on;
+plot(row_A(10:20:end),col_A(10:20:end),'r.');
+plot(row_B(10:20:end),col_B(10:20:end),'y.');
+plot(row_C(10:20:end),col_C(10:20:end),'g.');
+plot(row_D(10:20:end),col_D(10:20:end),'c.');
+plot(row_E(10:20:end),col_E(10:20:end),'b.');
